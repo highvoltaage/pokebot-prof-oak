@@ -1,5 +1,10 @@
 # Prof Oak for PokéBot (Gen 3)
 
+**Currently developing**
+- Shiny tracking currently works off of a JSON file that is built as you catch shiny pokemon.
+  Goal is to transition to scanning party and pc to build that file for tracking (will account
+  for previously caught shinies)
+
 **Two drop-in plugins** for PokéBot-style Emerald shiny hunting:
 - `shiny_quota.py` — learns encountered species per **(map_enum, MODE)** and **pauses** once you own a shiny of each.
 - `prof_oak_mode.py` — a thin bot mode wrapper (“**Prof Oak**”) that runs Level Grind behavior while `shiny_quota` handles quotas.

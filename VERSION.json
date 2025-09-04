@@ -1,0 +1,8 @@
+{
+  "package_version": "sq-0.2.0-alpha.1_po-0.2.0-alpha.1",
+  "plugins": {
+    "prof_oak_mode.py": "0.2.0-alpha.1",
+    "shiny_quota.py": "0.2.0-alpha.1"
+  },
+  "timestamp": "2025-09-04T17:35:58Z"
+}

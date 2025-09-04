@@ -77,8 +77,8 @@ def _find_level_grind_base():
 # -------- plugin that registers our mode --------
 class ProfOakPlugin(BotPlugin):
     name = "ProfOakPlugin"
-    version = "1.1.0"
-    author = "you"
+    version = "0.2.0-alpha.1"
+    author = "HighVoltaage"
     description = "Adds the 'Prof Oak' mode (wrapper around Level Grind)."
 
     def get_additional_bot_modes(self) -> Iterable[type["BotMode"]]:

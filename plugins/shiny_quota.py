@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # plugins/shiny_quota.py
-# "Learn-as-you-go" shiny quota for Emerald.
+# "Learn-as-you-go" shiny quota for Emerald/FRLG.
 # Keys hunts by EncounterInfo.map (enum) + normalized encounter MODE (GRASS/WATER/ROD/etc).
 # OWNERSHIP SOURCE: live scan of PC storage + party (written to plugins/ProfOak/owned_shinies.json)
 
@@ -87,6 +87,21 @@ def _status(msg: str) -> None:
     except Exception:
         pass
 
+# ---- emulator readiness helper (prevents FR/LG init crash) ----
+def _emulator_ready() -> bool:
+    """Return True once context.emulator exists and can answer get_frame_count()."""
+    try:
+        emu = getattr(context, "emulator", None)
+        if emu is None:
+            return False
+        gc = getattr(emu, "get_frame_count", None)
+        if callable(gc):
+            _ = gc()  # raises until emulator is fully attached
+            return True
+    except Exception:
+        return False
+    return False
+
 # ---------------- small JSON I/O ----------------
 def _read_json(path) -> dict:
     try:
@@ -108,7 +123,7 @@ def _write_json(path, data: dict) -> None:
 # ======================================================
 class ShinyQuotaPlugin(BotPlugin):
     name = PLUGIN_NAME
-    version = "0.2.0-alpha.1"
+    version = "0.2.2-alpha.0"
     description = "Pause when you have a shiny of every species you've encountered on this map+mode."
     author = "HighVoltaage"
 
@@ -130,17 +145,21 @@ class ShinyQuotaPlugin(BotPlugin):
         self.required_species_current: Set[str] = set()
         self.owned_species_global: Set[str] = set()
 
-        # FIRST: Build/refresh the owned shinies DB from PC + party
-        self._refresh_owned_species_global(write_out=True)
-
-        _log_info(f"[{PLUGIN_NAME}] Initialized. Learned @ {LEARNED_PATH.name}, Owned @ {OWNED_DB_PATH.name}")
+        # Defer first PC/party scan until emulator is ready (fixes FR/LG init timing)
+        self._pending_initial_scan = True
+        _log_info(f"[{PLUGIN_NAME}] Initialized. Learned @ {LEARNED_PATH.name}, Owned @ {OWNED_DB_PATH.name} (scan deferred)")
 
     def get_additional_bot_modes(self) -> Iterable[type]:  # none added
         return ()
 
     def on_profile_loaded(self, *_args, **_kwargs) -> None:
-        # Refresh owned DB at profile load as well
-        self._refresh_owned_species_global(write_out=True)
+        # Try to perform the initial scan now; if emulator not ready, defer to first battle.
+        if _emulator_ready():
+            self._refresh_owned_species_global(write_out=True)
+            self._pending_initial_scan = False
+        else:
+            _log_warn(f"[{PLUGIN_NAME}] Emulator not ready; will scan PC/party on first battle.")
+
         _log_info(f"[{PLUGIN_NAME}] Profile loaded. Shinies known: {len(self.owned_species_global)}")
 
     # --------------------------------------------------
@@ -149,6 +168,11 @@ class ShinyQuotaPlugin(BotPlugin):
     def on_battle_started(self, encounter=None, *args, **kwargs) -> None:
         """Learn species for this (map_enum, mode) using EncounterInfo."""
         try:
+            # If we still owe the initial scan, try now (emulator is usually ready by first battle)
+            if getattr(self, "_pending_initial_scan", False) and _emulator_ready():
+                self._refresh_owned_species_global(write_out=True)
+                self._pending_initial_scan = False
+
             enc = encounter or self._get_encounterinfo(args, kwargs)
             if DEBUG_DUMP:
                 self._debug_dump_enc(enc)
@@ -187,7 +211,8 @@ class ShinyQuotaPlugin(BotPlugin):
     def on_pokemon_caught(self, mon: Pokemon, *args, **kwargs) -> None:
         """After every catch, rescan PC+party and update owned DB, then re-check quota."""
         try:
-            self._refresh_owned_species_global(write_out=True)
+            if _emulator_ready():
+                self._refresh_owned_species_global(write_out=True)
             self._maybe_pause_if_quota_met()
         except Exception as e:
             _log_warn(f"on_pokemon_caught error: {e}")
@@ -230,6 +255,10 @@ class ShinyQuotaPlugin(BotPlugin):
     # --------------------------------------------------
     def _refresh_owned_species_global(self, write_out: bool = False) -> None:
         """Scan PC storage and party to build the set of shiny species; optionally write DB JSON."""
+        if not _emulator_ready():
+            _log_warn(f"[{PLUGIN_NAME}] Emulator not ready; skipping PC/party scan for now.")
+            return
+
         owned: Set[str] = set()
 
         # PC storage

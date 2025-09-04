@@ -1,4 +1,5 @@
 # Prof Oak for PokéBot (Gen 3)
+**A WIP plugin for Pokebot Gen3 (https://github.com/40Cakes/pokebot-gen3) by @40Cakes
 
 **Currently developing**
 - Shiny tracking currently works off of a JSON file that is built as you catch shiny pokemon.

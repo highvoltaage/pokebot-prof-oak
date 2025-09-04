@@ -1,0 +1,7 @@
+
+# runtime artifacts
+__pycache__/
+*.pyc
+output/
+data/
+

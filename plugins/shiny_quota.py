@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 # plugins/shiny_quota.py
-# Minimal "learn-as-you-go" shiny quota for Emerald.
-# Keys hunts by EncounterInfo.map (enum) + a normalized encounter MODE (GRASS/WATER/ROD/etc).
+# "Learn-as-you-go" shiny quota for Emerald/FRLG.
+# Keys hunts by EncounterInfo.map (enum) + normalized encounter MODE (GRASS/WATER/ROD/etc).
+# OWNERSHIP SOURCE: live scan of PC storage + party (written to plugins/ProfOak/owned_shinies.json)
 
 import json
 import os
+import time
 from typing import Dict, List, Optional, Set, Iterable
 
 from modules.plugin_interface import BotPlugin
@@ -12,51 +14,95 @@ from modules.context import context
 from modules.runtime import get_base_path
 from modules.pokemon import Pokemon
 
+# Storage / Party helpers (fork-compatible imports)
+try:
+    from modules.pokemon_storage import get_pokemon_storage  # type: ignore
+except Exception:
+    get_pokemon_storage = None  # type: ignore
+
+# Party lives in modules.pokemon_party (some forks export get_party, others get_pokemon_party)
+try:
+    from modules.pokemon_party import get_party as _get_party  # type: ignore
+except Exception:
+    try:
+        from modules.pokemon_party import get_pokemon_party as _get_party  # type: ignore
+    except Exception:
+        _get_party = None  # type: ignore
+
+
 PLUGIN_NAME = "ShinyQuota"
 
 # ---------------- CONFIG ----------------
-GLOBAL_SPECIES_OWNERSHIP = True             # Any shiny of a species counts globally
-PAUSE_ACTION = "pause"                      # "pause" or "manual"
-DEBUG_DUMP = False                          # Print EncounterInfo structure at battle start
-GROUP_FISHING_WITH_WATER = False            # True => OLD/GOOD/SUPER ROD are normalized to WATER instead of ROD
+GLOBAL_SPECIES_OWNERSHIP = True   # Any shiny of a species counts globally (PC + party)
+PAUSE_ACTION = "pause"            # "pause" or "manual"
+DEBUG_DUMP = False                # Print EncounterInfo structure at battle start
+GROUP_FISHING_WITH_WATER = False  # True => OLD/GOOD/SUPER ROD collapse into WATER instead of ROD
 
-# Persisted file: species we have LEARNED for each (map_enum, mode)
-LEARNED_PATH = get_base_path() / "data" / "emerald_learned_by_mapmode.json"
+# ---------------- Paths (under plugins/ProfOak) ----------------
+def _profoak_dir():
+    return get_base_path() / "plugins" / "ProfOak"
 
-# ----------------- tiny logging helpers -----------------
+PROFOAK_DIR = _profoak_dir()
+LEARNED_PATH = PROFOAK_DIR / "emerald_learned_by_mapmode.json"  # encountered species per (map_enum, MODE)
+OWNED_DB_PATH = PROFOAK_DIR / "owned_shinies.json"              # shiny species owned (PC + party)
+
+# -------------- tiny logging helpers --------------
 def _log_info(msg: str) -> None:
     for attr in ("logger", "log"):
         lg = getattr(context, attr, None)
         if lg and hasattr(lg, "info"):
-            try: lg.info(msg); return
-            except Exception: pass
+            try:
+                lg.info(msg); return
+            except Exception:
+                pass
     print(msg)
 
 def _log_warn(msg: str) -> None:
     for attr in ("logger", "log"):
         lg = getattr(context, attr, None)
         if lg and hasattr(lg, "warning"):
-            try: lg.warning(msg); return
-            except Exception: pass
+            try:
+                lg.warning(msg); return
+            except Exception:
+                pass
         if lg and hasattr(lg, "warn"):
-            try: lg.warn(msg); return
-            except Exception: pass
+            try:
+                lg.warn(msg); return
+            except Exception:
+                pass
     print(f"WARNING: {msg}")
 
 def _notify(msg: str) -> None:
     try:
         if hasattr(context, "notify") and callable(getattr(context, "notify")):
             context.notify(msg); return
-    except Exception: pass
+    except Exception:
+        pass
     _log_info(f"[{PLUGIN_NAME}] {msg}")
 
 def _status(msg: str) -> None:
     try:
         if hasattr(context, "overlay") and hasattr(context.overlay, "set_status_line"):
             context.overlay.set_status_line(msg)
-    except Exception: pass
+    except Exception:
+        pass
 
-# ----------------- small JSON I/O -----------------
+# ---- emulator readiness helper (prevents FR/LG init crash) ----
+def _emulator_ready() -> bool:
+    """Return True once context.emulator exists and can answer get_frame_count()."""
+    try:
+        emu = getattr(context, "emulator", None)
+        if emu is None:
+            return False
+        gc = getattr(emu, "get_frame_count", None)
+        if callable(gc):
+            _ = gc()  # raises until emulator is fully attached
+            return True
+    except Exception:
+        return False
+    return False
+
+# ---------------- small JSON I/O ----------------
 def _read_json(path) -> dict:
     try:
         if path.exists():
@@ -77,35 +123,57 @@ def _write_json(path, data: dict) -> None:
 # ======================================================
 class ShinyQuotaPlugin(BotPlugin):
     name = PLUGIN_NAME
-    version = "3.1.0"
+    version = "0.2.2-alpha.0"
     description = "Pause when you have a shiny of every species you've encountered on this map+mode."
-    author = "you"
+    author = "HighVoltaage"
 
     def __init__(self) -> None:
+        # Ensure plugins/ProfOak exists
+        try:
+            PROFOAK_DIR.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+
+        # Load learned encounters DB (map+mode -> species[])
         self.learned: Dict[str, Dict[str, List[str]]] = _read_json(LEARNED_PATH) or {}
-        self.current_map_key: Optional[str] = None  # e.g., "RSE_ROUTE_101"
+
+        # Current hunt key (set on battle start)
+        self.current_map_key: Optional[str] = None  # e.g., "RSE_ROUTE_118"
         self.current_mode: str = "GRASS"
 
+        # Live caches
         self.required_species_current: Set[str] = set()
         self.owned_species_global: Set[str] = set()
-        self._refresh_owned_species_global()
 
-        _log_info(f"[{PLUGIN_NAME}] Initialized. Learned file: {LEARNED_PATH}")
+        # Defer first PC/party scan until emulator is ready (fixes FR/LG init timing)
+        self._pending_initial_scan = True
+        _log_info(f"[{PLUGIN_NAME}] Initialized. Learned @ {LEARNED_PATH.name}, Owned @ {OWNED_DB_PATH.name} (scan deferred)")
 
     def get_additional_bot_modes(self) -> Iterable[type]:  # none added
         return ()
 
     def on_profile_loaded(self, *_args, **_kwargs) -> None:
-        self._refresh_owned_species_global()
+        # Try to perform the initial scan now; if emulator not ready, defer to first battle.
+        if _emulator_ready():
+            self._refresh_owned_species_global(write_out=True)
+            self._pending_initial_scan = False
+        else:
+            _log_warn(f"[{PLUGIN_NAME}] Emulator not ready; will scan PC/party on first battle.")
+
         _log_info(f"[{PLUGIN_NAME}] Profile loaded. Shinies known: {len(self.owned_species_global)}")
 
     # --------------------------------------------------
     # Battle hooks
     # --------------------------------------------------
-    def on_battle_started(self, *args, **kwargs) -> None:
+    def on_battle_started(self, encounter=None, *args, **kwargs) -> None:
         """Learn species for this (map_enum, mode) using EncounterInfo."""
         try:
-            enc = self._get_encounterinfo(args, kwargs)
+            # If we still owe the initial scan, try now (emulator is usually ready by first battle)
+            if getattr(self, "_pending_initial_scan", False) and _emulator_ready():
+                self._refresh_owned_species_global(write_out=True)
+                self._pending_initial_scan = False
+
+            enc = encounter or self._get_encounterinfo(args, kwargs)
             if DEBUG_DUMP:
                 self._debug_dump_enc(enc)
             if enc is None:
@@ -141,14 +209,10 @@ class ShinyQuotaPlugin(BotPlugin):
             _log_warn(f"on_battle_started error: {e}")
 
     def on_pokemon_caught(self, mon: Pokemon, *args, **kwargs) -> None:
+        """After every catch, rescan PC+party and update owned DB, then re-check quota."""
         try:
-            if not getattr(mon, "is_shiny", False):
-                return
-            species = (getattr(mon, "species_name", "") or "").upper()
-            if not species:
-                return
-            self.owned_species_global.add(species)
-            _log_info(f"[{PLUGIN_NAME}] Shiny obtained: {species}")
+            if _emulator_ready():
+                self._refresh_owned_species_global(write_out=True)
             self._maybe_pause_if_quota_met()
         except Exception as e:
             _log_warn(f"on_pokemon_caught error: {e}")
@@ -159,6 +223,7 @@ class ShinyQuotaPlugin(BotPlugin):
     def _maybe_pause_if_quota_met(self) -> None:
         if not self.current_map_key or not self.required_species_current:
             return
+
         owned = self.owned_species_global if GLOBAL_SPECIES_OWNERSHIP else set()
         missing = sorted(self.required_species_current - owned)
         self._update_status()
@@ -186,6 +251,67 @@ class ShinyQuotaPlugin(BotPlugin):
             pass
 
     # --------------------------------------------------
+    # OWNERSHIP: PC storage + party
+    # --------------------------------------------------
+    def _refresh_owned_species_global(self, write_out: bool = False) -> None:
+        """Scan PC storage and party to build the set of shiny species; optionally write DB JSON."""
+        if not _emulator_ready():
+            _log_warn(f"[{PLUGIN_NAME}] Emulator not ready; skipping PC/party scan for now.")
+            return
+
+        owned: Set[str] = set()
+
+        # PC storage
+        try:
+            if get_pokemon_storage:
+                storage = get_pokemon_storage()
+                for box in storage.boxes:
+                    for slot in box.slots:
+                        mon = slot.pokemon
+                        if getattr(mon, "is_shiny", False):
+                            nm = getattr(mon, "species_name", None) \
+                                 or getattr(getattr(mon, "species", None), "name", None)
+                            if isinstance(nm, str) and nm:
+                                owned.add(nm.upper())
+        except Exception as e:
+            _log_warn(f"[{PLUGIN_NAME}] PC scan failed: {e}")
+
+        # Party
+        try:
+            mons = None
+            if _get_party:
+                mons = _get_party()
+            elif hasattr(context, "party"):
+                mons = getattr(context, "party")
+            if mons:
+                it = getattr(mons, "pokemon", mons)  # list or container with .pokemon
+                for mon in it:
+                    if not mon:
+                        continue
+                    if getattr(mon, "is_shiny", False):
+                        nm = getattr(mon, "species_name", None) \
+                             or getattr(getattr(mon, "species", None), "name", None)
+                        if isinstance(nm, str) and nm:
+                            owned.add(nm.upper())
+        except Exception as e:
+            _log_warn(f"[{PLUGIN_NAME}] Party scan failed: {e}")
+
+        self.owned_species_global = owned
+
+        if write_out:
+            try:
+                data = {
+                    "last_scan_epoch": int(time.time()),
+                    "species": sorted(owned),
+                }
+                _write_json(OWNED_DB_PATH, data)
+                _log_info(f"[{PLUGIN_NAME}] Shinies in PC+party: {len(owned)} species (DB updated)")
+            except Exception as e:
+                _log_warn(f"[{PLUGIN_NAME}] Could not write owned shinies DB: {e}")
+        else:
+            _log_info(f"[{PLUGIN_NAME}] Shinies in PC+party: {len(owned)} species")
+
+    # --------------------------------------------------
     # Extractors (EncounterInfo-first)
     # --------------------------------------------------
     def _get_encounterinfo(self, args, kwargs):
@@ -197,7 +323,8 @@ class ShinyQuotaPlugin(BotPlugin):
 
     def _map_key_from_enc(self, enc) -> Optional[str]:
         m = getattr(enc, "map", None)
-        if m is None: return None
+        if m is None:
+            return None
         name = getattr(m, "name", None)
         return str(name) if isinstance(name, str) and name else str(m)
 
@@ -220,7 +347,7 @@ class ShinyQuotaPlugin(BotPlugin):
             if n in ("SURFING", "UNDERWATER", "WATER"):
                 return "WATER"
 
-            # land-like encounters (grass, walking, cave interiors, buildings, desert)
+            # land-like encounters (grass/cave/buildings/etc.)
             if n in ("GRASS", "LAND", "WALKING", "CAVE", "BUILDING", "DESERT", "INSIDE"):
                 return "GRASS"
 
@@ -232,7 +359,7 @@ class ShinyQuotaPlugin(BotPlugin):
             if n in ("SAFARI", "SAFARI_ZONE"):
                 return "SAFARI"
 
-            # static / gift / event mons
+            # static / gifts / events
             if n in ("STATIC", "GIFT", "EVENT", "LEGENDARY"):
                 return "STATIC"
 
@@ -244,7 +371,8 @@ class ShinyQuotaPlugin(BotPlugin):
         try:
             md = getattr(context, "mode", None)
             nm = getattr(md, "name", None)
-            if nm: return str(nm).upper()
+            if nm:
+                return str(nm).upper()
         except Exception:
             pass
 
@@ -256,30 +384,13 @@ class ShinyQuotaPlugin(BotPlugin):
 
     def _species_from_enc(self, enc) -> Optional[str]:
         p = getattr(enc, "pokemon", None)
-        if p is None: return None
+        if p is None:
+            return None
         s = getattr(p, "species_name", None)
         if isinstance(s, str) and s:
             return s.upper()
         n = getattr(p, "name", None)
         return n.upper() if isinstance(n, str) and n else None
-
-    # --------------------------------------------------
-    # Owned shinies (seed once from output folder)
-    # --------------------------------------------------
-    def _refresh_owned_species_global(self) -> None:
-        owned: Set[str] = set()
-        try:
-            shiny_dir = get_base_path() / "output" / "shinies"
-            if shiny_dir.is_dir():
-                for fname in os.listdir(shiny_dir):
-                    base = os.path.splitext(fname)[0]
-                    parts = base.split("-")
-                    for p in reversed(parts):
-                        if p.isalpha():
-                            owned.add(p.upper()); break
-        except Exception:
-            pass
-        self.owned_species_global = owned
 
     # --------------------------------------------------
     # Optional: one-shot structure dump to help debugging
@@ -291,8 +402,10 @@ class ShinyQuotaPlugin(BotPlugin):
                 return
             lines = []
             def add(label, val):
-                try: lines.append(f"{label}: {repr(val)[:140]}")
-                except Exception: lines.append(f"{label}: <unreprable>")
+                try:
+                    lines.append(f"{label}: {repr(val)[:140]}")
+                except Exception:
+                    lines.append(f"{label}: <unreprable>")
             add("type(enc)", f"{type(enc).__module__}.{type(enc).__name__}")
             add("map", getattr(enc, "map", None))
             add("map.name", getattr(getattr(enc, "map", None), "name", None))

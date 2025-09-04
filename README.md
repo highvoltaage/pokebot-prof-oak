@@ -2,9 +2,8 @@
 **A WIP plugin for Pokebot Gen3 (https://github.com/40Cakes/pokebot-gen3) by @40Cakes**
 
 **Currently developing**
-- Shiny tracking currently works off of a JSON file that is built as you catch shiny pokemon.
-  Goal is to transition to scanning party and pc to build that file for tracking (will account
-  for previously caught shinies)
+- Living Dex functionality -> looking to add a second bot mode to change between the logic
+  and then check how many of the pokemon u need/have (shiny catalog will need to change setup to show QTY
 
 **Two drop-in plugins** for PokéBot-style Emerald shiny hunting:
 - `shiny_quota.py` — learns encountered species per **(map_enum, MODE)** and **pauses** once you own a shiny of each.
@@ -12,7 +11,7 @@
 
 ## Features
 - Uses `EncounterInfo` (no ROM edits) to key hunts by **map** and **method** (`GRASS`, `WATER`, `ROD`, etc.).
-- Counts owned shinies directly from **PC storage + party** **WIP**.
+- Counts owned shinies directly from **PC storage + party** **IMPLEMENTED!**.
 - Generates **local** JSON (`data/emerald_learned_by_mapmode.json`) as you play; nothing is committed to the repo.
 
 ## Install

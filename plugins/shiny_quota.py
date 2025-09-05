@@ -46,7 +46,7 @@ DEBUG_DUMP = False                 # Log EncounterInfo fields at battle start
 LIVING_DEBUG = False               # Extra logs for evolution counting
 GROUP_FISHING_WITH_WATER = False   # Treat ROD as SURF instead of ROD
 # === Catch-block YAML integration ===
-AUTO_BLOCK_COMPLETED_SPECIES = True  # set False to disable auto-blocking
+AUTO_BLOCK_COMPLETED_SPECIES = False  # set False to disable auto-blocking
 CATCH_BLOCK_PATH = get_base_path() / "profiles" / "catch_block.yml"
 
 
@@ -130,7 +130,7 @@ def _write_json(path, data: dict) -> None:
 # ======================================================
 class ShinyQuotaPlugin(BotPlugin):
     name = PLUGIN_NAME
-    version = "0.3.3-alpha.0"
+    version = "0.3.4-alpha.0"
     description = "Pause when you have a shiny of every species you've encountered on this map+mode. Supports Living Dex."
     author = "HighVoltaage"
 

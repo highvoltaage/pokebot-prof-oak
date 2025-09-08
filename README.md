@@ -109,9 +109,10 @@ When quota is met:
 ## Current WIP / Roadmap
 
 - **Navigator:** call into the bot’s overworld pathing to travel to the next route based on progression flags and a route-order JSON.
-- **Static encounter data (optional):** later we may ship prebuilt encounter JSONs (e.g., from pret decomp) to bootstrap learning.
-- **Versioning / update helper:** simple version file + publish script (local script already prototyped).
-- **Auto catch-block:** add completed species automatically to `profiles/catch_block.yml` (implemented, but not yet tested).
+- **Static encounter data (optional):** previously planned to ship encounter data as an additional JSON. The bot has built in encounter data scraping, that I plan to tap into for tracking.
+- **Versioning / update helper:** simple version file + publish script (auto update of sorts)
+- **Auto catch-block:** add completed species automatically to `profiles/catch_block.yml` (implemented, but not yet tested)
+- **Unown Letters Tracking:** current tracking does not account for different Unown Letters. Working on adapting tracking to account for this, possibly to be enabled as an additional config option.
 
 ---
 

@@ -1,26 +1,21 @@
-# -*- coding: utf-8 -*-
 # plugins/prof_oak_mode.py
-#
-# Registers TWO modes:
-#   • Prof Oak — wraps a configurable base bot mode (default LevelGrind/Spin per your settings)
-#   • Living Prof Oak — attempts to enable "living dex" behavior in shiny_quota; if unavailable,
-#                       it transparently falls back to Prof Oak behavior.
-#
-# Configure inside this file, optionally prompt once, and persist to plugins/ProfOak/config.json.
-#
-# Quick config:
-#   PLUGIN_DEFAULT_BASES = ["LevelGrind"]   # or ["Spin", "LevelGrind"] etc.
-#   ASK_ON_FIRST_USE = False                # True => one-time console prompt
-#
-# Optional env override:
-#   PROFOAK_BASE="Spin"            # or "Spin,LevelGrind"
+# -*- coding: utf-8 -*-
+"""
+Registers TWO modes:
+  • Prof Oak — wraps a configurable base bot mode (e.g., Spin or LevelGrind)
+  • Living Prof Oak — same wrapper, but flips ShinyQuota to Living-Dex
+
+This module also ensures the ShinyQuota plugin (now under plugins/ProfOak/)
+is imported AND properly registered into the bot's global plugin registry.
+"""
 
 from __future__ import annotations
-from typing import Iterable, Generator, TYPE_CHECKING, Optional, Sequence, Dict, Any, Tuple, Type
+
+from typing import Iterable, TYPE_CHECKING, Optional, Sequence, Dict, Any, Tuple, Type
+import importlib
 import json
 import os
 import sys
-import importlib
 from pathlib import Path
 
 from modules.plugin_interface import BotPlugin
@@ -30,17 +25,25 @@ from modules.runtime import get_base_path
 if TYPE_CHECKING:
     from modules.modes import BotMode  # typing only
 
-# ======================== Inline config ========================
-PLUGIN_DEFAULT_BASES: list[str] = ["Spin"]  # e.g., ["Spin", "LevelGrind"]
-ASK_ON_FIRST_USE: bool = False
 
-# ===============================================================
+__all__ = ["ProfOakPlugin"]
+__version__ = "0.3.1"  # keep in lockstep with ShinyQuota
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CONFIG
+# ──────────────────────────────────────────────────────────────────────────────
+PLUGIN_DEFAULT_BASES: list[str] = ["Spin", "LevelGrind"]
+ASK_ON_FIRST_USE: bool = False  # set True to prompt in TTY once
 
 PROFOAK_DIR = get_base_path() / "plugins" / "ProfOak"
 PROFOAK_DIR.mkdir(parents=True, exist_ok=True)
 CONFIG_PATH = PROFOAK_DIR / "config.json"
 
-# ---------------- Tiny logging helpers ----------------
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Logging helpers
+# ──────────────────────────────────────────────────────────────────────────────
 def _log_info(msg: str) -> None:
     for attr in ("logger", "log"):
         lg = getattr(context, attr, None)
@@ -50,6 +53,7 @@ def _log_info(msg: str) -> None:
             except Exception:
                 pass
     print(msg)
+
 
 def _log_warn(msg: str) -> None:
     for attr in ("logger", "log"):
@@ -66,9 +70,13 @@ def _log_warn(msg: str) -> None:
                 pass
     print(f"WARNING: {msg}")
 
-# ---------------- Convenience ----------------
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Base mode resolution
+# ──────────────────────────────────────────────────────────────────────────────
 def _norm_name(s: str) -> str:
     return s.strip().lower().replace(" ", "").replace("_", "-")
+
 
 def _parse_bases(value: object) -> list[str]:
     names: list[str] = []
@@ -79,210 +87,190 @@ def _parse_bases(value: object) -> list[str]:
         for v in value:
             if isinstance(v, str) and v.strip():
                 names.append(v.strip())
-    seen = set(); out = []
+    seen, out = set(), []
     for n in names:
         k = _norm_name(n)
         if k and k not in seen:
             seen.add(k); out.append(n)
     return out
 
+
 def _load_saved_choice() -> list[str] | None:
     try:
         if CONFIG_PATH.exists():
             data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
             if isinstance(data, dict):
-                if "base_modes" in data:
+                if "base_modes" in data:  # new
                     return _parse_bases(data["base_modes"])
-                if "base_mode" in data:
+                if "base_mode" in data:   # legacy
                     return _parse_bases(data["base_mode"])
     except Exception:
         pass
     return None
 
+
 def _save_choice(bases: list[str]) -> None:
     try:
-        payload = {"base_modes": bases}
-        CONFIG_PATH.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        CONFIG_PATH.write_text(json.dumps({"base_modes": bases}, indent=2, sort_keys=True), encoding="utf-8")
         _log_info(f"[ProfOak] Saved base selection to {CONFIG_PATH.name}: {bases}")
     except Exception as e:
         _log_warn(f"[ProfOak] Could not save base selection: {e}")
 
-# ---------------- Discovery helpers ----------------
+
 def _try_import_candidates(canon: str):
-    name_map = {
-        "levelgrind": ("level_grind", "LevelGrind"),
-        "spin": ("spin", "Spin"),
-    }
+    """Try built-ins first, then regular modes."""
+    name_map = {"levelgrind": ("level_grind", "LevelGrind"), "spin": ("spin", "Spin")}
     mod_name, class_name = name_map.get(canon, (canon, canon.capitalize()))
 
-    # 1) built-in modes
+    # built-in
     try:
         m = __import__(f"modules.built_in_modes.{mod_name}", fromlist=[class_name])
-        return getattr(m, class_name, None)
+        cls = getattr(m, class_name, None)
+        if cls: return cls
     except Exception:
         pass
 
-    # 2) regular modes
+    # regular
     try:
         m = __import__(f"modules.modes.{mod_name}", fromlist=[class_name])
-        return getattr(m, class_name, None)
+        cls = getattr(m, class_name, None)
+        if cls: return cls
     except Exception:
         pass
-
     return None
+
 
 def _find_mode_in_registry(canon: str):
     try:
         from modules.modes import get_bot_modes  # type: ignore
         for cls in get_bot_modes():
-            if cls is None:
-                continue
+            if cls is None: continue
             mode_name = None
             try:
                 name_fn = getattr(cls, "name", None)
                 mode_name = name_fn() if callable(name_fn) else None
             except Exception:
                 mode_name = None
-
             cand = (_norm_name(str(mode_name)) if isinstance(mode_name, str) else None) or _norm_name(getattr(cls, "__name__", ""))
-
-            if cand == canon:
-                return cls
-            if canon == "levelgrind" and cand in {"level_grind", "levelgrindmode"}:
-                return cls
-            if canon == "spin" and cand in {"spinner", "spinmode"}:
-                return cls
+            if cand == canon: return cls
+            if canon == "levelgrind" and cand in {"level_grind", "levelgrindmode"}: return cls
+            if canon == "spin" and cand in {"spinner", "spinmode"}: return cls
     except Exception:
         pass
     return None
+
+
+def _resolve_base_class(preferred: Sequence[str]) -> Tuple[Optional[type], Optional[str]]:
+    for raw in preferred:
+        canon = _norm_name(raw)
+        cls = _try_import_candidates(canon) or _find_mode_in_registry(canon)
+        if cls: return cls, raw
+    return None, None
+
 
 def _discover_available(basenames: list[str]) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     for raw in basenames:
         canon = _norm_name(raw)
         cls = _try_import_candidates(canon) or _find_mode_in_registry(canon)
-        if cls:
-            out[raw] = cls
+        if cls: out[raw] = cls
     return out
 
-def _resolve_base_class(preferred: Sequence[str]) -> Tuple[Optional[type], Optional[str]]:
-    for raw in preferred:
-        canon = _norm_name(raw)
-        cls = _try_import_candidates(canon) or _find_mode_in_registry(canon)
-        if cls:
-            return cls, raw
-    return None, None
 
-# ---------------- Selection logic ----------------
 def _get_preferred_bases() -> list[str]:
-    saved = _load_saved_choice()
-    if saved:
-        return saved
-    env = os.getenv("PROFOAK_BASE")
-    if env and env.strip():
-        bases = _parse_bases(env)
-        if bases:
-            return bases
-    return list(PLUGIN_DEFAULT_BASES)
+    return _load_saved_choice() or _parse_bases(os.getenv("PROFOAK_BASE") or "") or list(PLUGIN_DEFAULT_BASES)
+
 
 def _maybe_prompt_once(defaults: list[str]) -> list[str]:
-    if not ASK_ON_FIRST_USE:
+    if not ASK_ON_FIRST_USE or CONFIG_PATH.exists() or not sys.stdin or not sys.stdin.isatty():
         return defaults
-    if CONFIG_PATH.exists():
-        return defaults
-    if not sys.stdin or not sys.stdin.isatty():
-        return defaults
-
     avail = _discover_available(["LevelGrind", "Spin"])
-    if not avail:
-        return defaults
-
+    if not avail: return defaults
     print("\n[ProfOak] Pick a base mode to wrap:")
     options = list(avail.keys())
-    for i, name in enumerate(options, 1):
-        print(f"  {i}) {name}")
+    for i, name in enumerate(options, 1): print(f"  {i}) {name}")
     print(f"Press ENTER for default [{defaults[0]}].")
-    try:
-        choice = input("> ").strip()
-    except Exception:
-        choice = ""
+    try: choice = input("> ").strip()
+    except Exception: choice = ""
     if choice.isdigit():
         idx = int(choice) - 1
         if 0 <= idx < len(options):
             chosen = options[idx]
             bases = [chosen] + [b for b in defaults if _norm_name(b) != _norm_name(chosen)]
-            _save_choice(bases)
-            return bases
-    _save_choice(defaults)
-    return defaults
+            _save_choice(bases); return bases
+    _save_choice(defaults); return defaults
 
-# ---------------- Talk to shiny_quota ----------------
-def _get_shiny_quota_instance():
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ShinyQuota bridge (ensure instance is in the global plugin list)
+# ──────────────────────────────────────────────────────────────────────────────
+def _ensure_shiny_quota_loaded():
+    """
+    Import ShinyQuota from plugins/ProfOak/shiny_quota.py and ensure a live instance
+    is present in modules.plugins.plugins (the bot's global plugin registry).
+    """
     try:
-        sq_mod = importlib.import_module("plugins.shiny_quota")
-    except Exception:
-        return None, None
+        sq_mod = importlib.import_module("plugins.ProfOak.shiny_quota")
+    except Exception as e:
+        _log_warn(f"[ProfOak] Could not import ShinyQuota: {e}")
+        return None
+
     SQ = getattr(sq_mod, "ShinyQuotaPlugin", None)
     if SQ is None:
-        return None, None
-    inst = None
+        _log_warn("[ProfOak] ShinyQuotaPlugin class not found in plugins/ProfOak/shiny_quota.py")
+        return None
+
     try:
-        from modules.plugins import get_plugin_instance  # type: ignore
+        from modules.plugins import get_plugin_instance, is_plugin_loaded, plugins as registry  # type: ignore
         inst = get_plugin_instance(SQ)
-    except Exception:
+        if inst:
+            return inst
+        # not present → create and append to global registry
+        inst = SQ()
+        registry.append(inst)
+        _log_info("[ProfOak] Registered ShinyQuota in global plugin registry.")
+        return inst
+    except Exception as e:
+        _log_warn(f"[ProfOak] Could not register ShinyQuota: {e}")
+        # last-resort: keep a reference on context (not ideal, but better than nothing)
         try:
-            plist = getattr(context, "plugins", [])
-            for p in plist or []:
-                if isinstance(p, SQ):
-                    inst = p; break
+            lst = getattr(context, "plugins", None)
+            if isinstance(lst, list):
+                inst = SQ(); lst.append(inst); return inst
         except Exception:
             pass
-    return SQ, inst
+    return None
 
-def _configure_shiny_quota(living: bool) -> bool:
-    """
-    Try to flip shiny_quota into (or out of) living-dex mode and force-refresh its caches.
-    Returns True if we likely succeeded.
-    """
-    SQ, inst = _get_shiny_quota_instance()
-    if SQ is None or inst is None:
-        _log_warn("[ProfOak] shiny_quota not loaded; continuing anyway.")
-        return False
 
-    # Try explicit setter first
+def _configure_shiny_quota(living: bool) -> None:
+    inst = _ensure_shiny_quota_loaded()
+    if not inst:
+        return
+
+    # Preferred explicit setters (newer SQ)
     for setter in ("set_livingdex_enabled", "set_living_dex", "enable_living_dex", "enable_livingdex"):
         fn = getattr(inst, setter, None)
         if callable(fn):
-            try:
-                fn(bool(living))
-                break
-            except Exception:
-                pass
+            try: fn(bool(living)); break
+            except Exception: pass
     else:
-        # Try mode-style setter as a fallback
+        # legacy style
         for setter in ("set_mode", "set_quota_mode"):
             fn = getattr(inst, setter, None)
             if callable(fn):
-                try:
-                    fn("LIVING" if living else "STANDARD")
-                    break
-                except Exception:
-                    pass
+                try: fn("LIVING" if living else "STANDARD"); break
+                except Exception: pass
 
-    # Force-refresh if possible so overlay text updates immediately
-    for refresh_name in ("force_refresh",):
-        rf = getattr(inst, refresh_name, None)
-        if callable(rf):
-            try:
-                rf()
-            except Exception:
-                pass
+    rf = getattr(inst, "force_refresh", None)
+    if callable(rf):
+        try: rf()
+        except Exception: pass
 
-    # Not strictly verifiable; return True if we had a path to act.
-    return True
 
-# ---------------- Mode factory ----------------
-def _make_wrapped_mode(Base: Type, pretty: str, living: bool) -> Type["BotMode"]:
+# ──────────────────────────────────────────────────────────────────────────────
+# Mode factory
+# ──────────────────────────────────────────────────────────────────────────────
+def _make_wrapped_mode(Base: Type["BotMode"], pretty: str, living: bool) -> Type["BotMode"]:
     mode_name = "Living Prof Oak" if living else "Prof Oak"
 
     class _Wrapped(Base):  # type: ignore[misc]
@@ -293,46 +281,42 @@ def _make_wrapped_mode(Base: Type, pretty: str, living: bool) -> Type["BotMode"]
         @staticmethod
         def description() -> str:
             if living:
-                return ("Living Prof Oak wrapper using "
-                        f"{pretty} behavior. Attempts to require a shiny for each evolution stage "
-                        "via ShinyQuota; if not supported, falls back to standard Prof Oak.")
-            return (f"Prof Oak challenge wrapper using {pretty} behavior. "
-                    "Pairs with ShinyQuota to pause when route/method shiny quota is met.")
+                return f"Living Prof Oak wrapper using {pretty}. Requires a shiny for each evo stage."
+            return f"Prof Oak wrapper using {pretty}. Pause/navigate when route quota is met."
 
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)  # type: ignore
-            if living:
-                _configure_shiny_quota(True)
-                _log_info("[Living Prof Oak] Living-dex mode active (requested).")
-            else:
-                _configure_shiny_quota(False)
-                _log_info(f"[Prof Oak] Mode initialized (base: {pretty}).")
+            _ensure_shiny_quota_loaded()
+            _configure_shiny_quota(living)
+            which = "Living-dex" if living else "Standard"
+            _log_info(f"[{mode_name}] Initialized (base: {pretty}, ShinyQuota={which}).")
 
-        def run(self) -> "Generator":  # type: ignore[override]
-            if living:
-                _log_info(f"[Living Prof Oak] Starting run loop (delegating to {pretty}).")
-            else:
-                _log_info(f"[Prof Oak] Starting run loop (delegating to {pretty}).")
+        def run(self):  # type: ignore[override]
+            _log_info(f"[{mode_name}] Delegating run() to {pretty}.")
             yield from super().run()  # type: ignore
 
     return _Wrapped
 
-# ---------------- Plugin that registers both modes ----------------
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Plugin: register both wrapped modes
+# ──────────────────────────────────────────────────────────────────────────────
 class ProfOakPlugin(BotPlugin):
     name = "ProfOakPlugin"
-    version = "0.6.1-alpha.0"
+    version = __version__
     author = "HighVoltaage"
-    description = ("Adds 'Prof Oak' and 'Living Prof Oak' modes that wrap a configurable base mode "
-                   "(e.g., LevelGrind or Spin). Living Prof Oak flips shiny_quota's living-dex flag "
-                   "on enter; Prof Oak flips it off.")
+    description = (
+        "Adds 'Prof Oak' and 'Living Prof Oak' modes that wrap a configurable base mode "
+        "(e.g., LevelGrind or Spin). Living Prof Oak flips ShinyQuota's living-dex flag."
+    )
 
     def get_additional_bot_modes(self) -> Iterable[type["BotMode"]]:
-        preferred = _get_preferred_bases()
-        preferred = _maybe_prompt_once(preferred)
+        _ensure_shiny_quota_loaded()  # make sure SQ exists before modes start
 
+        preferred = _maybe_prompt_once(_get_preferred_bases())
         Base, chosen = _resolve_base_class(preferred)
         if Base is None:
-            _log_warn(f"[ProfOak] Could not resolve any base from: {preferred}. Not registering Prof Oak modes.")
+            _log_warn(f"[ProfOak] Could not resolve any base from: {preferred}. Not registering modes.")
             return []
 
         pretty = chosen or getattr(Base, "__name__", "UnknownBase")
@@ -340,5 +324,16 @@ class ProfOakPlugin(BotPlugin):
 
         ProfOakMode = _make_wrapped_mode(Base, pretty, living=False)
         LivingProfOakMode = _make_wrapped_mode(Base, pretty, living=True)
-
         return [ProfOakMode, LivingProfOakMode]
+
+from plugins.ProfOak import navigator as prof_oak_navigator
+from modules.plugin_interface import BotPlugin
+
+class ProfOakNavigatorBridge(BotPlugin):
+    name = "ProfOakNavigatorBridge"
+    version = "0.1.1"
+    description = "Registers the Prof Oak Navigator listener."
+    author = "HighVoltaage"
+
+    def get_additional_bot_listeners(self):
+        return [prof_oak_navigator.get_listener()]

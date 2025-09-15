@@ -1,31 +1,18 @@
 # Prof Oak for PokéBot (Gen 3)
 
 A WIP plugin set for [PokeBot-Gen3](https://github.com/PokeBot-Gen3/PokeBot-Gen3) that adds “Prof Oak” style shiny-hunting with **route quotas** and an optional **Living Dex** variant.
-
----
-
-## Contents
-
-```
-plugins/
-├─ prof_oak_mode.py             # Registers “Prof Oak” and “Living Prof Oak” modes (wraps a base mode like Spin/LevelGrind)
-└─ ProfOak/
-   ├─ shiny_quota.py            # Quota logic (learn per-route encounters, count owned shinies, act on quota)
-   └─ json/                     # (runtime) learned/owned JSONs written here
-```
-
-> No static JSONs are committed. The plugin learns encounters at runtime and writes data under `plugins/ProfOak/json/`.
+**NOW WITH NAVIGATION** --- **!!!!!HEAVY WIP. REPORT ALL BUGS!!!!!**
 
 ---
 
 ## Features
 
-- **Learns-as-you-go:** tracks species you actually encounter per **(map, method)** using `EncounterInfo`.
+- **Learns-as-you-go:** tracks species you actually encounter per **(map, method)** using `EncounterInfo`. **Working on prebuilt JSON usage**
 - **PC + Party scan for owned shinies:** counts real shinies from storage & party — no screenshots or manual lists.
 - **Two hunt modes**
   - **Prof Oak:** requires *one* shiny per evolutionary line (any family member satisfies the line).
   - **Living Prof Oak:** requires one shiny per *evolution stage* (handles branching families like Wurmple).
-- **On-quota action:** switch to **Manual** now; **Navigate** is designed (navigator module stub hook included).
+- **On-quota action:** switch to **Manual** now; **Navigate** is working but **HEAVY WIP**.
 - **Fork-friendly & defensive:** plays nice with Emerald/FRLG timing and optional imports; won’t crash if something’s missing.
 
 ---
@@ -33,11 +20,11 @@ plugins/
 ## Install
 
 1. Copy these files into your bot folder:
-   - `plugins/prof_oak_mode.py`
-   - `plugins/shiny_quota.py`
+   - `plugins/
 2. Start the bot and pick:
    - **Prof Oak**
    - **Living Prof Oak** (will flip the living-dex flag inside `ShinyQuota`)
+   **Can CLI launch in one of these modes with -m "Prof Oak" or -m "Living Prof Oak"
 
 > The plugin will create `plugins/ProfOak/` automatically and store runtime data there.
 
@@ -76,7 +63,7 @@ All config is inline and easy to tweak near the top of each file.
 
 ### `plugins/prof_oak_mode.py`
 
-- `PLUGIN_DEFAULT_BASES = ["Spin", "LevelGrind"]`  
+- `PLUGIN_DEFAULT_BASES = ["Spin", "Level Grind"]`  
   Which base mode(s) to try to wrap (first found wins).
 - `ASK_ON_FIRST_USE = False`  
   If `True` and running in a TTY, prompt once to pick the base mode and save it.
@@ -112,6 +99,7 @@ When quota is met:
 - **Static encounter data (optional):** later we may ship prebuilt encounter JSONs (e.g., from pret decomp) to bootstrap learning.
 - **Versioning / update helper:** simple version file + publish script (local script already prototyped).
 - **Auto catch-block:** add completed species automatically to `profiles/catch_block.yml` (implemented, but not yet tested).
+- **Story Handler:** add a script to read flags/vars to determine if story progress needs to be made
 
 ---
 

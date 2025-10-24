@@ -4,7 +4,7 @@ _This file is auto-generated. Do not edit by hand._
 
 ## Issue #3 — Leaf Green Unown tracker
 State: open
-Labels: bug, fr/lg
+Labels: bug, fr/lg, IN PROGRESS
 
 ### Description
 despite catching multiple shiny unown in the first ruin in the ruins of alph, the shiny quota for that route does not update
@@ -12,7 +12,7 @@ despite catching multiple shiny unown in the first ruin in the ruins of alph, th
 
 ## Issue #4 — Sapphire, Emerald, Ruby - shiny quota
 State: open
-Labels: bug, Ruby/Saph, emerald
+Labels: bug, Ruby/Saph, emerald, IN PROGRESS
 
 ### Description
 the shiny quota does not automatically update whenever a shiny is caught. instead, you have to restart the game and enable the module whether it's the prof oak or living prof oak module in order for the shiny quota to update

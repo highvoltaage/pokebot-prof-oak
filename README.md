@@ -1,127 +1,49 @@
-# Prof Oak for PokéBot (Gen 3)
+# Prof Oak Mode for PokéBot Gen3
 
-A WIP plugin set for [PokeBot-Gen3](https://github.com/PokeBot-Gen3/PokeBot-Gen3) that adds “Prof Oak” style shiny-hunting with **route quotas** and an optional **Living Dex** variant.
+Prof Oak Mode extends the [40cakes/pokebot-gen3](https://github.com/40cakes/pokebot-gen3) project with tooling for "Professor Oak" and "Living Dex" style playthroughs. The plugin enforces per-route shiny quotas, manages encounter backlogs, and can optionally steer the bot along a curated story-safe route order.
 
----
+## Prerequisites
+- A working checkout of `40cakes/pokebot-gen3` (see `40cakes/README.md` for emulator and firmware requirements).
+- Python 3.12 with the dependencies installed by the upstream bot's bootstrap scripts.
+- A supported Generation III ROM and a save file profile recognised by PokéBot Gen3.
 
-## Contents
+## Installation
+1. Clone or download this repository alongside your existing PokéBot Gen3 checkout.
+2. Copy the `plugins/` directory into the root of your PokéBot installation, or add this repository to `PYTHONPATH` so the modules can be imported directly.
+3. Launch the bot with `python pokebot.py --plugins prof_oak_mode` (or enable the plugin in your profile configuration).
+4. Pick the base mode(s) that Prof Oak Mode should wrap the first time it runs; the selection persists to `plugins/ProfOak/config.json`.
 
-```
-plugins/
-├─ prof_oak_mode.py             # Registers “Prof Oak” and “Living Prof Oak” modes (wraps a base mode like Spin/LevelGrind)
-└─ ProfOak/
-   ├─ shiny_quota.py            # Quota logic (learn per-route encounters, count owned shinies, act on quota)
-   └─ json/                     # (runtime) learned/owned JSONs written here
-```
+> **Note:** Everything in the `40cakes/` folder is provided for reference only—do not modify those files. All plugin configuration lives under `plugins/ProfOak/`.
 
-> No static JSONs are committed. The plugin learns encounters at runtime and writes data under `plugins/ProfOak/json/`.
+## Key Features
+### Shiny quota tracking
+- `plugins/ProfOak/shiny_quota.py` mirrors the upstream shiny quota plugin while adding Professor Oak specific constraints.
+- Requirements now expand Unown encounters into only the letters available for the active chamber, using the runtime cache stored at `plugins/ProfOak/JSON/unown_letters_seen.json`.
+- The owned shiny cache refreshes immediately after a catch so Emerald/Sapphire/Ruby quotas update without restarting the plugin.
 
----
+### Living Prof Oak Mode
+- Toggle the "Living" variant from the mode selection prompt or by editing `plugins/prof_oak_mode.py`.
+- When enabled, the plugin tracks individual species ownership and adjusts quotas to require keeping one shiny of each evolutionary line.
 
-## Features
+### Optional auto-navigation (experimental)
+- `plugins/ProfOak/navigator.py` can advance the bot through a curated Emerald route order once a route's quota is complete.
+- Navigation and overworld pathing are high-risk. Review `plugins/ProfOak/emerald_route_order.json` and accompanying logic before modifying movement routines.
 
-- **Learns-as-you-go:** tracks species you actually encounter per **(map, method)** using `EncounterInfo`.
-- **PC + Party scan for owned shinies:** counts real shinies from storage & party — no screenshots or manual lists.
-- **Two hunt modes**
-  - **Prof Oak:** requires *one* shiny per evolutionary line (any family member satisfies the line).
-  - **Living Prof Oak:** requires one shiny per *evolution stage* (handles branching families like Wurmple).
-- **On-quota action:** switch to **Manual** now; **Navigate** is designed (navigator module stub hook included).
-- **Fork-friendly & defensive:** plays nice with Emerald/FRLG timing and optional imports; won’t crash if something’s missing.
+## JSON Assets
+Runtime data is stored alongside the plugin under `plugins/ProfOak/JSON/`:
+- `unown_letters_seen.json` — observed Unown forms per map, used to scope active quotas.
+- `owned_shinies.json` — living dex cache of owned shinies.
 
----
+Back up these files if you maintain multiple saves so progress transfers cleanly between sessions.
 
-## Install
-
-1. Copy these files into your bot folder:
-   - `plugins/prof_oak_mode.py`
-   - `plugins/shiny_quota.py`
-2. Start the bot and pick:
-   - **Prof Oak**
-   - **Living Prof Oak** (will flip the living-dex flag inside `ShinyQuota`)
-
-> The plugin will create `plugins/ProfOak/` automatically and store runtime data there.
-
----
-
-## Usage
-
-1. Choose a farming method (grass, rod, surf, etc.) and hunt normally.
-2. The plugin:
-   - records encountered species for the current **map + method**
-   - scans **PC + Party** to count owned shinies
-3. When the route quota is met, the plugin performs your **On-Quota** action (Manual by default).
-
-You’ll see periodic console lines like:
-```
-[ShinyQuota] Standard missing (3): PIDGEY×1, RATTATA×1, SPEAROW×1…
-```
-
----
-
-## Configuration
-
-All config is inline and easy to tweak near the top of each file.
-
-### `plugins/ProfOak/shiny_quota.py`
-
-- `ON_QUOTA = "manual"`  
-  Behavior when quota is met:
-  - `"manual"` → switch the bot to Manual mode
-  - `"navigate"` → try to call a navigator at `plugins/ProfOak/navigator.py`
-- `GROUP_FISHING_WITH_WATER = False`  
-  If `True`, group rod encounters with SURF/WATER; else use a separate `ROD` method.
-- `LIVING_DEBUG`, `DEBUG_DUMP`  
-  Verbose console output for tuning.
-- (Optional) catch-block integration is present behind a flag; defaults off.
-
-### `plugins/prof_oak_mode.py`
-
-- `PLUGIN_DEFAULT_BASES = ["Spin", "LevelGrind"]`  
-  Which base mode(s) to try to wrap (first found wins).
-- `ASK_ON_FIRST_USE = False`  
-  If `True` and running in a TTY, prompt once to pick the base mode and save it.
-
-> The Prof Oak modes will ensure `ShinyQuota` is registered and keep its **living-dex** flag in sync with the chosen mode.
-
----
-
-## How it works
-
-- **Key** = `(map, method)` where:
-  - `map` is the map/area name from `EncounterInfo.map.name`
-  - `method` is normalized from `EncounterInfo.type` (e.g., `GRASS`, `ROD`, `SURF`, `ROCK_SMASH`, `STATIC`, `SAFARI`)
-- **Learned species** per key are stored at:
-  - `plugins/ProfOak/json/emerald_learned_by_mapmode.json`
-- **Owned shinies** (PC + Party) snapshot is stored at:
-  - `plugins/ProfOak/json/owned_shinies.json`
-- **Prof Oak (Standard):** requires 1 shiny per evolutionary family
-- **Living Prof Oak:** requires 1 shiny per evolution stage across the whole family (branching supported)
-
-When quota is met:
-- If `ON_QUOTA = "manual"` → switch to Manual mode (safest default)
-- If `ON_QUOTA = "navigate"` → call a function in `plugins/ProfOak/navigator.py`:
-  - `navigate_after_quota(context, current_map, method, learned, owned_counts)` **or**
-  - `navigate_to_next_target(context, current_map, method, learned, owned_counts)`
-  - If missing or errors, it falls back to Manual.
-
----
-
-## Current WIP / Roadmap
-
-- **Navigator:** call into the bot’s overworld pathing to travel to the next route based on progression flags and a route-order JSON.
-- **Static encounter data (optional):** previously planned to ship encounter data as an additional JSON. The bot has built in encounter data scraping, that I plan to tap into for tracking.
-- **Versioning / update helper:** simple version file + publish script (auto update of sorts)
-- **Auto catch-block:** add completed species automatically to `profiles/catch_block.yml` (implemented, but not yet tested)
-- **Unown Letters Tracking:** current tracking does not account for different Unown Letters. Working on adapting tracking to account for this, possibly to be enabled as an additional config option.
-
----
+## Configuration Tips
+- Adjust default wrapped modes in `plugins/prof_oak_mode.py` via the `PLUGIN_DEFAULT_BASES` constant or the `PROFOAK_BASE` environment variable.
+- The plugin surfaces a one-time prompt (`ASK_ON_FIRST_USE = True`) if you prefer to choose the base modes interactively.
+- Capability detection (`plugins/ProfOak/capabilities.py`) reads badges, key items, and traversal HMs defensively so navigation and backlog filters respect story progress.
 
 ## Contributing
+1. Review `AGENTS.md` for repository guidelines.
+2. Document intended changes in `PLANS.md` before editing code.
+3. Run `python -m compileall plugins/ProfOak` to catch syntax errors before opening a pull request.
+4. Keep JSON assets in the `plugins/ProfOak/JSON/` directory so they load correctly on case-sensitive filesystems.
 
-Issues & PRs welcome. Please avoid committing ROMs or extracted copyrighted assets.
-
----
-
-## License
-
-MIT

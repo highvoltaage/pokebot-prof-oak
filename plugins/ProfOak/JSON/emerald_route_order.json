@@ -1,0 +1,326 @@
+[
+  {
+    "index": 1,
+    "map_group": 0,
+    "map_number": 16,
+    "name": "Route 101"
+  },
+  {
+    "index": 2,
+    "map_group": 0,
+    "map_number": 18,
+    "name": "Route 103"
+  },
+  {
+    "index": 3,
+    "map_group": 0,
+    "map_number": 17,
+    "name": "Route 102"
+  },
+  {
+    "index": 4,
+    "map_group": 0,
+    "map_number": 19,
+    "name": "Route 104"
+  },
+  {
+    "index": 5,
+    "map_group": 24,
+    "map_number": 11,
+    "name": "Petalburg Woods"
+  },
+  {
+    "index": 6,
+    "map_group": 0,
+    "map_number": 31,
+    "name": "Route 116"
+  },
+  {
+    "index": 7,
+    "map_group": 24,
+    "map_number": 4,
+    "name": "Rusturf Tunnel"
+  },
+  {
+    "index": 8,
+    "map_group": 24,
+    "map_number": 7,
+    "name": "Granite Cave (1F)"
+  },
+  {
+    "index": 9,
+    "map_group": 24,
+    "map_number": 8,
+    "name": "Granite Cave (B1F)"
+  },
+  {
+    "index": 10,
+    "map_group": 24,
+    "map_number": 9,
+    "name": "Granite Cave (B2F)"
+  },
+  {
+    "index": 11,
+    "map_group": 0,
+    "map_number": 25,
+    "name": "Route 110"
+  },
+  {
+    "index": 12,
+    "map_group": 0,
+    "map_number": 32,
+    "name": "Route 117"
+  },
+  {
+    "index": 13,
+    "map_group": 0,
+    "map_number": 26,
+    "name": "Route 111"
+  },
+  {
+    "index": 14,
+    "map_group": 0,
+    "map_number": 27,
+    "name": "Route 112"
+  },
+  {
+    "index": 15,
+    "map_group": 24,
+    "map_number": 14,
+    "name": "Fiery Path"
+  },
+  {
+    "index": 16,
+    "map_group": 0,
+    "map_number": 28,
+    "name": "Route 113"
+  },
+  {
+    "index": 17,
+    "map_group": 0,
+    "map_number": 29,
+    "name": "Route 114"
+  },
+  {
+    "index": 18,
+    "map_group": 24,
+    "map_number": 0,
+    "name": "Meteor Falls (1F) 1R"
+  },
+  {
+    "index": 19,
+    "map_group": 24,
+    "map_number": 13,
+    "name": "Jagged Pass"
+  },
+  {
+    "index": 20,
+    "map_group": 0,
+    "map_number": 33,
+    "name": "Route 118"
+  },
+  {
+    "index": 21,
+    "map_group": 0,
+    "map_number": 34,
+    "name": "Route 119"
+  },
+  {
+    "index": 22,
+    "map_group": 0,
+    "map_number": 35,
+    "name": "Route 120"
+  },
+  {
+    "index": 23,
+    "map_group": 0,
+    "map_number": 36,
+    "name": "Route 121"
+  },
+  {
+    "index": 24,
+    "map_group": 0,
+    "map_number": 37,
+    "name": "Route 122"
+  },
+  {
+    "index": 25,
+    "map_group": 24,
+    "map_number": 21,
+    "name": "Mt. Pyre Exterior"
+  },
+  {
+    "index": 26,
+    "map_group": 24,
+    "map_number": 15,
+    "name": "Mt. Pyre (1F)"
+  },
+  {
+    "index": 27,
+    "map_group": 24,
+    "map_number": 16,
+    "name": "Mt. Pyre (2F)"
+  },
+  {
+    "index": 28,
+    "map_group": 24,
+    "map_number": 17,
+    "name": "Mt. Pyre (3F)"
+  },
+  {
+    "index": 29,
+    "map_group": 24,
+    "map_number": 18,
+    "name": "Mt. Pyre (4F)"
+  },
+  {
+    "index": 30,
+    "map_group": 24,
+    "map_number": 19,
+    "name": "Mt. Pyre (5F)"
+  },
+  {
+    "index": 31,
+    "map_group": 24,
+    "map_number": 20,
+    "name": "Mt. Pyre (6F)"
+  },
+  {
+    "index": 32,
+    "map_group": 24,
+    "map_number": 15,
+    "name": "Mt. Pyre (1F)"
+  },
+  {
+    "index": 33,
+    "map_group": 0,
+    "map_number": 38,
+    "name": "Route 123"
+  },
+  {
+    "index": 34,
+    "map_group": 0,
+    "map_number": 39,
+    "name": "Route 124"
+  },
+  {
+    "index": 35,
+    "map_group": 0,
+    "map_number": 40,
+    "name": "Route 125"
+  },
+  {
+    "index": 36,
+    "map_group": 24,
+    "map_number": 46,
+    "name": "Shoal Cave (Low Tide), Entrance Room"
+  },
+  {
+    "index": 37,
+    "map_group": 24,
+    "map_number": 46,
+    "name": "Shoal Cave (Low Tide), Entrance Room"
+  },
+  {
+    "index": 38,
+    "map_group": 0,
+    "map_number": 41,
+    "name": "Route 126"
+  },
+  {
+    "index": 39,
+    "map_group": 0,
+    "map_number": 42,
+    "name": "Route 127"
+  },
+  {
+    "index": 40,
+    "map_group": 0,
+    "map_number": 43,
+    "name": "Route 128"
+  },
+  {
+    "index": 41,
+    "map_group": 24,
+    "map_number": 27,
+    "name": "Seafloor Cavern Entrance"
+  },
+  {
+    "index": 42,
+    "map_group": 24,
+    "map_number": 27,
+    "name": "Seafloor Cavern Entrance"
+  },
+  {
+    "index": 43,
+    "map_group": 24,
+    "map_number": 27,
+    "name": "Seafloor Cavern Entrance"
+  },
+  {
+    "index": 44,
+    "map_group": 24,
+    "map_number": 27,
+    "name": "Seafloor Cavern Entrance"
+  },
+  {
+    "index": 45,
+    "map_group": 0,
+    "map_number": 44,
+    "name": "Route 129"
+  },
+  {
+    "index": 46,
+    "map_group": 0,
+    "map_number": 45,
+    "name": "Route 130"
+  },
+  {
+    "index": 47,
+    "map_group": 0,
+    "map_number": 46,
+    "name": "Route 131"
+  },
+  {
+    "index": 48,
+    "map_group": 0,
+    "map_number": 47,
+    "name": "Route 132"
+  },
+  {
+    "index": 49,
+    "map_group": 0,
+    "map_number": 48,
+    "name": "Route 133"
+  },
+  {
+    "index": 50,
+    "map_group": 0,
+    "map_number": 49,
+    "name": "Route 134"
+  },
+  {
+    "index": 51,
+    "map_group": 0,
+    "map_number": 8,
+    "name": "Ever Grande City"
+  },
+  {
+    "index": 52,
+    "map_group": 24,
+    "map_number": 43,
+    "name": "Victory Road (1F)"
+  },
+  {
+    "index": 53,
+    "map_group": 24,
+    "map_number": 44,
+    "name": "Victory Road (B1F)"
+  },
+  {
+    "index": 54,
+    "map_group": 24,
+    "map_number": 45,
+    "name": "Victory Road (B2F)"
+  }
+]

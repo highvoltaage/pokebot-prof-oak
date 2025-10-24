@@ -1,7 +1,63 @@
+# =============================
+# Project-specific ignores
+# =============================
 
-# runtime artifacts
+# Top-level markdown docs you don’t want in repo
+AGENTS.md
+ISSUES.md
+PLANS.md
+
+# Ignore the 40cakes directory entirely
+40cakes/
+
+# Ignore the review file inside the plugin
+plugins/ProfOak/REVIEW.md
+
+# =============================
+# Python standard ignores
+# =============================
+
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
-output/
-data/
+*.py[cod]
+*$py.class
 
+# C extensions
+*.so
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Logs and temp files
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# IDE / editor settings
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS-specific clutter
+.DS_Store
+Thumbs.db
+
+# =============================
+# Git-related safety
+# =============================
+# Ignore nested .git metadata if ever copied around
+.git/
+.gitmodules

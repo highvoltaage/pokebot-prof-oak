@@ -1,0 +1,90 @@
+name: Sync ISSUES.md with GitHub Issues
+
+on:
+  workflow_dispatch:
+  issues:
+    types: [opened, edited, closed, reopened, labeled, unlabeled]
+
+permissions:
+  contents: write    # needed to commit ISSUES.md
+  issues: read       # needed to read issues
+
+jobs:
+  build-issues-md:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Generate ISSUES.md
+        id: generate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            // Get all issues (open+closed). We'll include both in ISSUES.md.
+            const response = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'all',
+              per_page: 100,
+              sort: 'created',
+              direction: 'asc'
+            });
+
+            // Helper: escape triple-backticks in body so we don't break markdown rendering
+            const sanitizeBody = (text) => {
+              if (!text) return "";
+              // optional: truncate huge bodies so the file doesn't get megabytes long
+              const MAX_LEN = 2000; // adjust if you want more/less
+              let clean = text.replace(/```/g, "``` ");
+              if (clean.length > MAX_LEN) {
+                clean = clean.slice(0, MAX_LEN) + "\n\n[... truncated for length ...]";
+              }
+              return clean.trim();
+            };
+
+            // Build the markdown
+            let md = "";
+            md += "# Repo Issue Tracker\n\n";
+            md += "_This file is auto-generated. Do not edit by hand._\n\n";
+
+            for (const issue of response.data) {
+              // Skip pull requests (PRs show up in this API too)
+              if (issue.pull_request) continue;
+
+              const number = issue.number;
+              const title = issue.title ?? "";
+              const state = issue.state; // "open" or "closed"
+              const labels = issue.labels.map(l => l.name).join(", ");
+              const body = sanitizeBody(issue.body ?? "");
+
+              md += `## Issue #${number} — ${title}\n`;
+              md += `State: ${state}\n`;
+              md += `Labels: ${labels || "none"}\n\n`;
+              md += `### Description\n`;
+              md += `${body || "_(no description provided)_"}\n`;
+              md += `---\n\n`;
+            }
+
+            fs.writeFileSync('ISSUES.md', md);
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "codex-bot"
+          git config user.email "codex-bot@users.noreply.github.com"
+
+          git add ISSUES.md
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          git commit -m "Auto-update ISSUES.md at ${ts}"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

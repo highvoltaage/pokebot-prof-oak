@@ -1,0 +1,79 @@
+name: Sync ISSUES.md with GitHub Issues
+
+on:
+  workflow_dispatch:        # you can run it manually from the Actions tab
+  push:                     # runs on any push (optional but nice for first run)
+  issues:                   # runs when issues change
+    types: [opened, edited, closed, reopened, labeled, unlabeled]
+
+permissions:
+  contents: write           # allow this workflow to push commits
+  issues: read              # allow this workflow to read issues via API
+
+jobs:
+  build-issues-md:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Generate ISSUES.md
+        id: generate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            // Get all issues (including open/closed so we can mark status)
+            const response = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'all',
+              per_page: 100,
+              sort: 'created',
+              direction: 'asc'
+            });
+
+            // Build markdown table header
+            let md = "";
+            md += "# Repo Issue Tracker\n\n";
+            md += "_This file is auto-generated. Do not edit by hand._\n\n";
+            md += "| # | Title | State | Labels |\n";
+            md += "|---|-------|-------|--------|\n";
+
+            // Add each issue
+            for (const issue of response.data) {
+              // Skip pull requests (GitHub treats PRs as issues in this API)
+              if (issue.pull_request) continue;
+
+              const number = issue.number;
+              const title = issue.title.replace(/\|/g, "\\|");
+              const state = issue.state; // "open" or "closed"
+              const url = issue.html_url;
+              const labels = issue.labels.map(l => l.name).join(", ");
+
+              md += `| ${number} | [${title}](${url}) | ${state} | ${labels} |\n`;
+            }
+
+            fs.writeFileSync('ISSUES.md', md);
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "codex-bot"
+          git config user.email "codex-bot@users.noreply.github.com"
+
+          # stage the regenerated ISSUES.md
+          git add ISSUES.md
+
+          # commit only if there's a diff
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          git commit -m "Auto-update ISSUES.md at ${ts}"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

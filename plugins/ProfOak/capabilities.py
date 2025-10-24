@@ -379,3 +379,32 @@ def refresh_capabilities(require_party_move: bool = True) -> Capabilities:
 def get_cached_capabilities() -> Optional[Capabilities]:
     """Return the last snapshot from refresh_capabilities(), or None."""
     return _CAPS_CACHE
+
+
+def get_current_capabilities(ctx=None, require_party_move: bool = True) -> Set[str]:
+    """Return the currently available encounter capability tokens.
+
+    Always includes ``"GRASS"``. Adds ``"SURF"``, ``"ROD"``, and ``"ROCK_SMASH"`` when
+    the cached (or freshly computed) snapshot shows the corresponding traversal
+    unlocks. ``ctx`` is accepted for API parity but currently unused.
+    """
+
+    caps = get_cached_capabilities()
+    if caps is None:
+        try:
+            caps = refresh_capabilities(require_party_move=require_party_move)
+        except Exception:
+            caps = None
+
+    tokens: Set[str] = {"GRASS"}
+    if not caps:
+        return tokens
+
+    if caps.can_surf:
+        tokens.add("SURF")
+    if caps.has_any_rod:
+        tokens.add("ROD")
+    if caps.can_rock_smash:
+        tokens.add("ROCK_SMASH")
+
+    return tokens

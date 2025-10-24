@@ -51,6 +51,7 @@ DEBUG_DUMP = True
 
 # Unown configuration
 UNOWN_FORMS: List[str] = [chr(c) for c in range(ord('A'), ord('Z') + 1)]
+UNOWN_LETTERS_PATH: Path = JSON_DIR / "unown_letters_seen.json"
 
 # =============================================================================
 #                              Small utilities
@@ -268,7 +269,7 @@ def _dump_rom_debug(tag: str = "") -> None:
 # =============================================================================
 class ShinyQuotaPlugin(BotPlugin):
     name = PLUGIN_NAME
-    version = "3.3.0"
+    version = "3.4.0"
     description = "Pauses (or navigates) when the shiny quota for the current map+method is complete."
     author = "you"
 
@@ -282,6 +283,8 @@ class ShinyQuotaPlugin(BotPlugin):
         self.owned_counts_global: Dict[str, int] = {}
         self.required_species_route: Set[str] = set()
         self.required_families_current: Dict[int, Tuple[int, Set[str]]] = {}
+        self.unown_letters_seen: Dict[str, Set[str]] = {}
+        self._load_unown_letters_seen()
         _log_info(f"[{PLUGIN_NAME}] Initialized. Learned: {LEARNED_PATH.name}, Owned: {OWNED_SNAPSHOT.name}")
 
     # ---- hooks ---------------------------------------------------------------
@@ -346,7 +349,9 @@ class ShinyQuotaPlugin(BotPlugin):
             if m: self.current_method = m
             else: self._refresh_method()
 
-            self._commit_learn(nm)
+            letter = getattr(mon, "unown_letter", None) if nm == "UNOWN" else None
+
+            self._commit_learn(nm, letter=letter)
             self._rebuild_route_requirements()
             self._rebuild_requirements_cache()
             self._print_missing_now()
@@ -356,17 +361,25 @@ class ShinyQuotaPlugin(BotPlugin):
     def on_pokemon_caught(self, mon: Pokemon, *a, **k) -> None:
         try:
             if not getattr(mon, "is_shiny", False): return
+            self._refresh_current_map()
+            self._refresh_method()
+
+            raw_letter = getattr(mon, "unown_letter", None)
             nm = _normalize_species(getattr(mon, "species_name", None) or getattr(getattr(mon, "species", None), "name", None))
-            if not nm: return
 
-            # Unown special-case: record per letter too
-            if nm == "UNOWN":
-                letter = getattr(mon, "unown_letter", None)
-                if isinstance(letter, str) and letter:
-                    self._bump_owned(f"UNOWN-{letter.upper()}")
+            if nm == "UNOWN" or (not nm and isinstance(raw_letter, str) and raw_letter.strip()):
+                self._record_unown_letter(raw_letter)
 
-            self._bump_owned(nm)
-            _write_json(OWNED_SNAPSHOT, {"species": sorted(self.owned_species_global), "counts": self.owned_counts_global})
+            if nm:
+                if nm == "UNOWN" and isinstance(raw_letter, str) and raw_letter.strip():
+                    self._bump_owned(f"UNOWN-{raw_letter.strip().upper()}")
+                self._bump_owned(nm)
+                _write_json(OWNED_SNAPSHOT, {"species": sorted(self.owned_species_global), "counts": self.owned_counts_global})
+            else:
+                self._refresh_owned_species_global(write_out=True)
+
+            self._rebuild_route_requirements()
+            self._rebuild_requirements_cache()
             self._print_missing_now()
             self._maybe_quota_action()
         except Exception as e:
@@ -377,8 +390,10 @@ class ShinyQuotaPlugin(BotPlugin):
         self._refresh_method()
 
     # ---- core ----------------------------------------------------------------
-    def _commit_learn(self, species: str) -> None:
+    def _commit_learn(self, species: str, letter: Optional[str] = None) -> None:
         if not self.current_map_key or not species: return
+        if species == "UNOWN":
+            self._record_unown_letter(letter)
         per_map = self.learned.setdefault(self.current_map_key, {})
         cur = set(per_map.get(self.current_method, []))
         if species not in cur:
@@ -387,11 +402,57 @@ class ShinyQuotaPlugin(BotPlugin):
             _write_json(LEARNED_PATH, self.learned)
             _log_info(f"[{PLUGIN_NAME}] Learned {species} on {self.current_map_key} ({self.current_method}).")
 
+    def _load_unown_letters_seen(self) -> None:
+        raw = _read_json(UNOWN_LETTERS_PATH)
+        if not isinstance(raw, dict):
+            return
+        for map_key, letters in raw.items():
+            if not isinstance(map_key, str):
+                continue
+            bucket: Set[str] = set()
+            if isinstance(letters, list):
+                for entry in letters:
+                    if isinstance(entry, str) and entry.strip():
+                        bucket.add(entry.strip().upper())
+            if bucket:
+                self.unown_letters_seen[map_key] = bucket
+
+    def _persist_unown_letters_seen(self) -> None:
+        serializable = {mk: sorted(letters) for mk, letters in self.unown_letters_seen.items() if letters}
+        _write_json(UNOWN_LETTERS_PATH, serializable)
+
+    def _record_unown_letter(self, letter: Optional[str]) -> bool:
+        if not self.current_map_key:
+            return False
+        if not isinstance(letter, str) or not letter.strip():
+            return False
+        normalized = letter.strip().upper()
+        letters = self.unown_letters_seen.setdefault(self.current_map_key, set())
+        if normalized in letters:
+            return False
+        letters.add(normalized)
+        self._persist_unown_letters_seen()
+        return True
+
+    def _unown_letters_for_current_map(self) -> Set[str]:
+        letters: Set[str] = set()
+        if self.current_map_key:
+            letters.update(self.unown_letters_seen.get(self.current_map_key, set()))
+            if not letters:
+                per_map = self.learned.get(self.current_map_key, {})
+                for lst in per_map.values():
+                    for species in lst:
+                        if isinstance(species, str) and species.startswith("UNOWN-"):
+                            letters.add(species.split("-", 1)[1].strip().upper())
+        if not letters:
+            return set(UNOWN_FORMS)
+        return {ltr.strip().upper() for ltr in letters if isinstance(ltr, str) and ltr.strip()}
+
     def _expand_unown_if_needed(self, species_set: Set[str]) -> Set[str]:
         if not self.livingdex_enabled: return species_set
         if "UNOWN" not in species_set: return species_set
         expanded = set(s for s in species_set if s != "UNOWN")
-        for letter in UNOWN_FORMS:
+        for letter in sorted(self._unown_letters_for_current_map()):
             expanded.add(f"UNOWN-{letter}")
         return expanded
 

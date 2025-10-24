@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json, os, time, glob
+from pathlib import Path
 from typing import Dict, List, Optional, Set, Iterable, Tuple, Generator  # keep Generator visible
 
 from modules.plugin_interface import BotPlugin
@@ -48,8 +49,17 @@ CATCH_BLOCK_PATH = get_base_path() / "profiles" / "catch_block.yml"
 def _profoak_dir():
     return get_base_path() / "plugins" / "ProfOak"
 
+
+def _resolve_json_dir(base: Path) -> Path:
+    for name in ("JSON", "json"):
+        candidate = base / name
+        if candidate.exists():
+            return candidate
+    return base / "JSON"
+
+
 PROFOAK_DIR    = _profoak_dir()
-JSON_DIR       = PROFOAK_DIR / "json"
+JSON_DIR       = _resolve_json_dir(PROFOAK_DIR)
 LEARNED_PATH   = PROFOAK_DIR / "emerald_learned_by_mapmode.json"
 OWNED_DB_PATH  = PROFOAK_DIR / "owned_shinies.json"
 UNOWN_SEEN_PATH = PROFOAK_DIR / "unown_letters_seen.json"

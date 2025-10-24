@@ -48,8 +48,17 @@ def _profoak_dir(ctx) -> Path:
         return Path("plugins/ProfOak")
 
 
+def _json_dir(ctx) -> Path:
+    base = _profoak_dir(ctx)
+    for name in ("JSON", "json"):
+        candidate = base / name
+        if candidate.exists():
+            return candidate
+    return base / "JSON"
+
+
 def _load_route_order(ctx) -> List[Dict[str, Any]]:
-    path = _profoak_dir(ctx) / "json" / "emerald_route_order.json"
+    path = _json_dir(ctx) / "emerald_route_order.json"
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, list):

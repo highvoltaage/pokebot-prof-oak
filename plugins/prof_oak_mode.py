@@ -219,8 +219,9 @@ def _maybe_prompt_once(defaults: list[str]) -> list[str]:
 # ---------------- Talk to shiny_quota ----------------
 def _get_shiny_quota_instance():
     try:
-        sq_mod = importlib.import_module("plugins.shiny_quota")
-    except Exception:
+        sq_mod = importlib.import_module("plugins.ProfOak.shiny_quota")
+    except Exception as exc:
+        _log_warn(f"[ProfOak] Could not import shiny_quota module: {exc}")
         return None, None
     SQ = getattr(sq_mod, "ShinyQuotaPlugin", None)
     if SQ is None:
